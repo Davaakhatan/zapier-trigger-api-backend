@@ -216,6 +216,28 @@ class DynamoDBClient:
                 raise ValueError(f"Event {event_id} not found (table does not exist)")
             raise Exception(f"Failed to acknowledge event: {str(e)}") from e
 
+    def get_acknowledged_count(self, limit: int = 1000) -> int:
+        """
+        Get count of acknowledged events.
+        
+        Args:
+            limit: Maximum number to count (default 1000)
+            
+        Returns:
+            Number of acknowledged events
+        """
+        try:
+            gsi_name = "status-created_at-index"
+            response = self.table.query(
+                IndexName=gsi_name,
+                KeyConditionExpression=Key("status").eq("acknowledged"),
+                Limit=limit,
+                ScanIndexForward=False
+            )
+            return len(response.get("Items", []))
+        except Exception:
+            return 0
+
     def get_event_stats(self) -> Dict[str, int]:
         """
         Get event statistics (counts by status).
@@ -224,33 +246,16 @@ class DynamoDBClient:
             Dictionary with 'pending', 'acknowledged', and 'total' counts
         """
         try:
-            gsi_name = "status-created_at-index"
-            
             # Get pending count - use get_pending_events which we know works
-            pending_count = 0
-            try:
-                _, pending_total = self.get_pending_events(limit=1000, offset=0)
-                pending_count = pending_total
-            except Exception:
-                pending_count = 0
+            _, pending = self.get_pending_events(limit=1000, offset=0)
             
-            # Get acknowledged count - simple query, same pattern as pending
-            acknowledged_count = 0
-            try:
-                response = self.table.query(
-                    IndexName=gsi_name,
-                    KeyConditionExpression=Key("status").eq("acknowledged"),
-                    Limit=1000,
-                    ScanIndexForward=False
-                )
-                acknowledged_count = len(response.get("Items", []))
-            except Exception:
-                acknowledged_count = 0
+            # Get acknowledged count - use new method
+            acknowledged = self.get_acknowledged_count(limit=1000)
             
             return {
-                "pending": pending_count,
-                "acknowledged": acknowledged_count,
-                "total": pending_count + acknowledged_count,
+                "pending": pending,
+                "acknowledged": acknowledged,
+                "total": pending + acknowledged,
             }
         except Exception:
             # Return zeros on any error - simple and safe

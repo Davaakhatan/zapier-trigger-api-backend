@@ -218,33 +218,11 @@ async def get_stats() -> StatsResponse:
 
     Returns counts of pending, acknowledged, and total events.
     """
-    # Use database method directly (we know get_pending_events works)
-    try:
-        _, pending = db.get_pending_events(limit=1000, offset=0)
-        
-        # Get acknowledged count - simple query
-        acknowledged = 0
-        try:
-            gsi_name = "status-created_at-index"
-            response = db.table.query(
-                IndexName=gsi_name,
-                KeyConditionExpression=Key("status").eq("acknowledged"),
-                Limit=1000
-            )
-            acknowledged = len(response.get("Items", []))
-        except Exception:
-            acknowledged = 0
-        
-        return StatsResponse(
-            pending=pending,
-            acknowledged=acknowledged,
-            total=pending + acknowledged,
-        )
-    except Exception:
-        # Fallback: return zeros
-        return StatsResponse(
-            pending=0,
-            acknowledged=0,
-            total=0,
-        )
+    # Use database method - simple and we know it works
+    stats = db.get_event_stats()
+    return StatsResponse(
+        pending=stats.get("pending", 0),
+        acknowledged=stats.get("acknowledged", 0),
+        total=stats.get("total", 0),
+    )
 
