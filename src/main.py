@@ -65,6 +65,8 @@ async def api_exception_handler(request, exc: APIException):
 async def general_exception_handler(request, exc: Exception):
     """Handle general exceptions."""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    logger.error(f"Request path: {request.url.path}")
+    logger.error(f"Request method: {request.method}")
     return JSONResponse(
         status_code=500,
         content={
@@ -87,6 +89,15 @@ async def health_check():
 
 # Include routers
 app.include_router(events.router)
+
+# Add middleware to log all requests
+@app.middleware("http")
+async def log_requests(request, call_next):
+    """Log all incoming requests."""
+    logger.info(f"Incoming request: {request.method} {request.url.path}")
+    response = await call_next(request)
+    logger.info(f"Response: {response.status_code} for {request.method} {request.url.path}")
+    return response
 
 
 if __name__ == "__main__":
