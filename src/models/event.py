@@ -43,16 +43,11 @@ class EventResponse(BaseModel):
 class EventItem(BaseModel):
     """Model for an event item in the inbox."""
 
-    id: str = Field(..., alias="event_id", description="Event ID")
+    id: str = Field(..., description="Event ID")
     timestamp: str = Field(..., description="ISO 8601 timestamp")
     payload: Dict[str, Any] = Field(..., description="Event payload")
     source: Optional[str] = Field(None, description="Source identifier")
     status: str = Field(..., description="Event status")
-
-    class Config:
-        """Pydantic config."""
-
-        populate_by_name = True
 
 
 class InboxResponse(BaseModel):

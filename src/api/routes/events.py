@@ -122,14 +122,16 @@ async def get_inbox(
         )
 
         # Convert to response models
+        from src.models.event import EventItem
+        
         event_items = [
-            {
-                "id": event["event_id"],
-                "timestamp": event["timestamp"],
-                "payload": event["payload"],
-                "source": event.get("source"),
-                "status": event["status"],
-            }
+            EventItem(
+                id=event["event_id"],  # Map event_id from DB to id field
+                timestamp=event["timestamp"],
+                payload=event["payload"],
+                source=event.get("source"),
+                status=event["status"],
+            )
             for event in events
         ]
 
