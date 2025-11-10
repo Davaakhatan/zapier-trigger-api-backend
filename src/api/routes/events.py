@@ -218,11 +218,19 @@ async def get_stats() -> StatsResponse:
 
     Returns counts of pending, acknowledged, and total events.
     """
-    # Use database method - simple and we know it works
-    stats = db.get_event_stats()
-    return StatsResponse(
-        pending=stats.get("pending", 0),
-        acknowledged=stats.get("acknowledged", 0),
-        total=stats.get("total", 0),
-    )
+    # First, try to get stats from database
+    try:
+        stats = db.get_event_stats()
+        return StatsResponse(
+            pending=stats.get("pending", 0),
+            acknowledged=stats.get("acknowledged", 0),
+            total=stats.get("total", 0),
+        )
+    except Exception as e:
+        # If that fails, return zeros (better than 500 error)
+        return StatsResponse(
+            pending=0,
+            acknowledged=0,
+            total=0,
+        )
 
