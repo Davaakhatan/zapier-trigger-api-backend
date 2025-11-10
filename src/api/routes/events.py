@@ -218,10 +218,9 @@ async def get_stats() -> StatsResponse:
 
     Returns counts of pending, acknowledged, and total events.
     """
-    # Get pending from inbox (we know this works)
+    # Use database method directly (we know get_pending_events works)
     try:
-        inbox = await get_inbox(limit=1000, offset=0)
-        pending = inbox.total
+        _, pending = db.get_pending_events(limit=1000, offset=0)
         
         # Get acknowledged count - simple query
         acknowledged = 0
