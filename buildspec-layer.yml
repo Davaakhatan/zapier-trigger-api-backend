@@ -1,0 +1,35 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.9
+    commands:
+      - echo "Installing dependencies..."
+      - pip install --upgrade pip
+  build:
+    commands:
+      - echo "Building Lambda Layer..."
+      - mkdir -p layer-package/python/lib/python3.9/site-packages
+      - pip install -r requirements.txt -t layer-package/python/lib/python3.9/site-packages/
+      - find layer-package -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+      - find layer-package -type f -name "*.pyc" -delete
+      - find layer-package -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
+      - |
+        if [ -f "layer-package/python/lib/python3.9/site-packages/annotated_doc/__init__.py" ]; then
+          cat > layer-package/python/lib/python3.9/site-packages/annotated_doc/__init__.py << 'EOF'
+        try:
+            from importlib.metadata import version
+            __version__ = version("annotated-doc")
+        except Exception:
+            __version__ = "0.0.0"
+        from .main import Doc as Doc
+        EOF
+        fi
+      - cd layer-package && zip -r ../layer.zip . && cd ..
+      - cp layer.zip $CODEBUILD_SRC_DIR/
+artifacts:
+  files:
+    - layer.zip
+  name: lambda-layer
+
