@@ -11,6 +11,7 @@ from src.models.event import (
     EventRequest,
     EventResponse,
     InboxResponse,
+    StatsResponse,
     ErrorResponse,
 )
 
@@ -200,5 +201,35 @@ async def acknowledge_event(event_id: str) -> AcknowledgeResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "internal_error", "message": "Failed to acknowledge event"},
+        ) from e
+
+
+@router.get(
+    "/stats",
+    response_model=StatsResponse,
+    responses={
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_stats() -> StatsResponse:
+    """
+    Get event statistics.
+
+    Returns counts of pending, acknowledged, and total events.
+    """
+    try:
+        stats = db.get_event_stats()
+        return StatsResponse(
+            pending=stats["pending"],
+            acknowledged=stats["acknowledged"],
+            total=stats["total"],
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error getting stats: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "internal_error", "message": "Failed to get statistics"},
         ) from e
 

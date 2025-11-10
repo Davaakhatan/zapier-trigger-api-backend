@@ -216,6 +216,52 @@ class DynamoDBClient:
                 raise ValueError(f"Event {event_id} not found (table does not exist)")
             raise Exception(f"Failed to acknowledge event: {str(e)}") from e
 
+    def get_event_stats(self) -> Dict[str, int]:
+        """
+        Get event statistics (counts by status).
+
+        Returns:
+            Dictionary with 'pending', 'acknowledged', and 'total' counts
+        """
+        try:
+            gsi_name = "status-created_at-index"
+            
+            # Get pending count
+            pending_response = self.table.query(
+                IndexName=gsi_name,
+                KeyConditionExpression=Key("status").eq("pending"),
+                Select="COUNT"
+            )
+            pending_count = pending_response.get("Count", 0)
+            
+            # Get acknowledged count
+            acknowledged_response = self.table.query(
+                IndexName=gsi_name,
+                KeyConditionExpression=Key("status").eq("acknowledged"),
+                Select="COUNT"
+            )
+            acknowledged_count = acknowledged_response.get("Count", 0)
+            
+            return {
+                "pending": pending_count,
+                "acknowledged": acknowledged_count,
+                "total": pending_count + acknowledged_count,
+            }
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                # Table doesn't exist - return zeros for development
+                return {"pending": 0, "acknowledged": 0, "total": 0}
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"DynamoDB stats query error: {e}. Returning zeros.")
+            return {"pending": 0, "acknowledged": 0, "total": 0}
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Unexpected error getting stats: {e}", exc_info=True)
+            return {"pending": 0, "acknowledged": 0, "total": 0}
+
 
 # Global database client instance
 db = DynamoDBClient()

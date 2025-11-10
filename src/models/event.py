@@ -67,6 +67,14 @@ class AcknowledgeResponse(BaseModel):
     message: str = Field(..., description="Success message")
 
 
+class StatsResponse(BaseModel):
+    """Response model for event statistics."""
+
+    pending: int = Field(..., description="Number of pending events")
+    acknowledged: int = Field(..., description="Number of acknowledged events")
+    total: int = Field(..., description="Total number of events")
+
+
 class ErrorResponse(BaseModel):
     """Error response model."""
 
