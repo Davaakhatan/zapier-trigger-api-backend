@@ -245,21 +245,25 @@ class DynamoDBClient:
         Returns:
             Dictionary with 'pending', 'acknowledged', and 'total' counts
         """
+        # Get pending count - use get_pending_events which we know works
+        pending = 0
         try:
-            # Get pending count - use get_pending_events which we know works
             _, pending = self.get_pending_events(limit=1000, offset=0)
-            
-            # Get acknowledged count - use new method
-            acknowledged = self.get_acknowledged_count(limit=1000)
-            
-            return {
-                "pending": pending,
-                "acknowledged": acknowledged,
-                "total": pending + acknowledged,
-            }
         except Exception:
-            # Return zeros on any error - simple and safe
-            return {"pending": 0, "acknowledged": 0, "total": 0}
+            pending = 0
+        
+        # Get acknowledged count - use new method
+        acknowledged = 0
+        try:
+            acknowledged = self.get_acknowledged_count(limit=1000)
+        except Exception:
+            acknowledged = 0
+        
+        return {
+            "pending": pending,
+            "acknowledged": acknowledged,
+            "total": pending + acknowledged,
+        }
 
 
 # Global database client instance
