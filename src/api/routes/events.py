@@ -217,19 +217,26 @@ async def get_stats() -> StatsResponse:
 
     Returns counts of pending, acknowledged, and total events.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
+        logger.info("Getting event stats...")
         stats = db.get_event_stats()
+        logger.info(f"Stats retrieved: {stats}")
+        
         # Ensure all values are integers
-        return StatsResponse(
+        result = StatsResponse(
             pending=int(stats.get("pending", 0)),
             acknowledged=int(stats.get("acknowledged", 0)),
             total=int(stats.get("total", 0)),
         )
+        logger.info(f"Returning stats: {result}")
+        return result
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Error getting stats: {e}", exc_info=True)
         # Return zeros instead of raising error for better UX
+        logger.warning("Returning zeros due to error")
         return StatsResponse(
             pending=0,
             acknowledged=0,
