@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
-from boto3.dynamodb.conditions import Key
 
 from src.core.config import settings
 from src.core.database import db
