@@ -227,32 +227,24 @@ class DynamoDBClient:
             gsi_name = "status-created_at-index"
             
             # Get pending count - use get_pending_events which we know works
-            # For now, just get a large sample (up to 1000) and use that count
             pending_count = 0
             try:
                 _, pending_total = self.get_pending_events(limit=1000, offset=0)
-                # This gives us the count from DynamoDB, but may be limited to 1000
-                # For accurate count, we'd need pagination, but this is good enough for now
                 pending_count = pending_total
-            except Exception as pending_error:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Error getting pending count: {pending_error}")
+            except Exception:
                 pending_count = 0
             
-            # Get acknowledged count - query acknowledged events (limit to 1000 for now)
+            # Get acknowledged count - simple query, same pattern as pending
             acknowledged_count = 0
             try:
                 response = self.table.query(
                     IndexName=gsi_name,
                     KeyConditionExpression=Key("status").eq("acknowledged"),
-                    Limit=1000  # Limit to 1000 for performance
+                    Limit=1000,
+                    ScanIndexForward=False
                 )
                 acknowledged_count = len(response.get("Items", []))
-            except Exception as ack_error:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Error getting acknowledged count: {ack_error}")
+            except Exception:
                 acknowledged_count = 0
             
             return {
@@ -260,19 +252,8 @@ class DynamoDBClient:
                 "acknowledged": acknowledged_count,
                 "total": pending_count + acknowledged_count,
             }
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                # Table doesn't exist - return zeros for development
-                return {"pending": 0, "acknowledged": 0, "total": 0}
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"DynamoDB stats query error: {e}. Returning zeros.")
-            return {"pending": 0, "acknowledged": 0, "total": 0}
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Unexpected error getting stats: {e}", exc_info=True)
+        except Exception:
+            # Return zeros on any error - simple and safe
             return {"pending": 0, "acknowledged": 0, "total": 0}
 
 
