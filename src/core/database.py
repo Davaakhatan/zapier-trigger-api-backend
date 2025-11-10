@@ -226,21 +226,40 @@ class DynamoDBClient:
         try:
             gsi_name = "status-created_at-index"
             
-            # Get pending count
-            pending_response = self.table.query(
-                IndexName=gsi_name,
-                KeyConditionExpression=Key("status").eq("pending"),
-                Select="COUNT"
-            )
-            pending_count = pending_response.get("Count", 0)
+            # Get pending count using COUNT query
+            pending_count = 0
+            try:
+                pending_response = self.table.query(
+                    IndexName=gsi_name,
+                    KeyConditionExpression=Key("status").eq("pending"),
+                    Select="COUNT"
+                )
+                pending_count = pending_response.get("Count", 0)
+            except Exception as pending_error:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Error getting pending count: {pending_error}")
+                # Fallback: use get_pending_events to get total
+                try:
+                    _, pending_total = self.get_pending_events(limit=1, offset=0)
+                    pending_count = pending_total
+                except Exception:
+                    pending_count = 0
             
-            # Get acknowledged count
-            acknowledged_response = self.table.query(
-                IndexName=gsi_name,
-                KeyConditionExpression=Key("status").eq("acknowledged"),
-                Select="COUNT"
-            )
-            acknowledged_count = acknowledged_response.get("Count", 0)
+            # Get acknowledged count - query acknowledged events with COUNT
+            acknowledged_count = 0
+            try:
+                acknowledged_response = self.table.query(
+                    IndexName=gsi_name,
+                    KeyConditionExpression=Key("status").eq("acknowledged"),
+                    Select="COUNT"
+                )
+                acknowledged_count = acknowledged_response.get("Count", 0)
+            except Exception as ack_error:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Error getting acknowledged count: {ack_error}")
+                acknowledged_count = 0
             
             return {
                 "pending": pending_count,
