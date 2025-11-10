@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
+from boto3.dynamodb.conditions import Key
 
 from src.core.config import settings
 from src.core.database import db
@@ -217,26 +218,31 @@ async def get_stats() -> StatsResponse:
 
     Returns counts of pending, acknowledged, and total events.
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
+    # Get pending from inbox (we know this works)
     try:
-        logger.info("Getting event stats...")
-        stats = db.get_event_stats()
-        logger.info(f"Stats retrieved: {stats}")
+        inbox = await get_inbox(limit=1000, offset=0)
+        pending = inbox.total
         
-        # Ensure all values are integers
-        result = StatsResponse(
-            pending=int(stats.get("pending", 0)),
-            acknowledged=int(stats.get("acknowledged", 0)),
-            total=int(stats.get("total", 0)),
+        # Get acknowledged count - simple query
+        acknowledged = 0
+        try:
+            gsi_name = "status-created_at-index"
+            response = db.table.query(
+                IndexName=gsi_name,
+                KeyConditionExpression=Key("status").eq("acknowledged"),
+                Limit=1000
+            )
+            acknowledged = len(response.get("Items", []))
+        except Exception:
+            acknowledged = 0
+        
+        return StatsResponse(
+            pending=pending,
+            acknowledged=acknowledged,
+            total=pending + acknowledged,
         )
-        logger.info(f"Returning stats: {result}")
-        return result
-    except Exception as e:
-        logger.error(f"Error getting stats: {e}", exc_info=True)
-        # Return zeros instead of raising error for better UX
-        logger.warning("Returning zeros due to error")
+    except Exception:
+        # Fallback: return zeros
         return StatsResponse(
             pending=0,
             acknowledged=0,
