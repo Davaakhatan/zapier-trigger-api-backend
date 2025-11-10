@@ -226,49 +226,67 @@ class DynamoDBClient:
         try:
             gsi_name = "status-created_at-index"
             
-            # Get pending count using COUNT query (no limit = get all)
+            # Get pending count - query all pending events with pagination
             pending_count = 0
             try:
-                pending_response = self.table.query(
-                    IndexName=gsi_name,
-                    KeyConditionExpression=Key("status").eq("pending"),
-                    Select="COUNT"
-                )
-                pending_count = pending_response.get("Count", 0)
+                pending_items = []
+                last_evaluated_key = None
+                
+                while True:
+                    query_kwargs = {
+                        "IndexName": gsi_name,
+                        "KeyConditionExpression": Key("status").eq("pending"),
+                        "Limit": 1000,
+                    }
+                    
+                    if last_evaluated_key:
+                        query_kwargs["ExclusiveStartKey"] = last_evaluated_key
+                    
+                    response = self.table.query(**query_kwargs)
+                    items = response.get("Items", [])
+                    pending_items.extend(items)
+                    
+                    last_evaluated_key = response.get("LastEvaluatedKey")
+                    if not last_evaluated_key:
+                        break
+                
+                pending_count = len(pending_items)
             except Exception as pending_error:
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.warning(f"Error getting pending count with COUNT: {pending_error}")
-                # Fallback: use get_pending_events (but this might be limited)
-                try:
-                    _, pending_total = self.get_pending_events(limit=1000, offset=0)
-                    pending_count = pending_total
-                except Exception:
-                    pending_count = 0
+                logger.warning(f"Error getting pending count: {pending_error}")
+                pending_count = 0
             
-            # Get acknowledged count - query acknowledged events
+            # Get acknowledged count - query all acknowledged events with pagination
             acknowledged_count = 0
             try:
-                acknowledged_response = self.table.query(
-                    IndexName=gsi_name,
-                    KeyConditionExpression=Key("status").eq("acknowledged"),
-                    Select="COUNT"
-                )
-                acknowledged_count = acknowledged_response.get("Count", 0)
+                acknowledged_items = []
+                last_evaluated_key = None
+                
+                while True:
+                    query_kwargs = {
+                        "IndexName": gsi_name,
+                        "KeyConditionExpression": Key("status").eq("acknowledged"),
+                        "Limit": 1000,
+                    }
+                    
+                    if last_evaluated_key:
+                        query_kwargs["ExclusiveStartKey"] = last_evaluated_key
+                    
+                    response = self.table.query(**query_kwargs)
+                    items = response.get("Items", [])
+                    acknowledged_items.extend(items)
+                    
+                    last_evaluated_key = response.get("LastEvaluatedKey")
+                    if not last_evaluated_key:
+                        break
+                
+                acknowledged_count = len(acknowledged_items)
             except Exception as ack_error:
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Error getting acknowledged count: {ack_error}")
-                # If COUNT query fails, try a regular query to count items
-                try:
-                    acknowledged_items = self.table.query(
-                        IndexName=gsi_name,
-                        KeyConditionExpression=Key("status").eq("acknowledged"),
-                        Limit=1000  # Get up to 1000 to count
-                    )
-                    acknowledged_count = len(acknowledged_items.get("Items", []))
-                except Exception:
-                    acknowledged_count = 0
+                acknowledged_count = 0
             
             return {
                 "pending": pending_count,
