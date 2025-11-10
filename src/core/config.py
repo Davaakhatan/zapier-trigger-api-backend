@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     # API
     api_v1_prefix: str = "/v1"
-    cors_origins: List[str] = ["*"]
+    cors_origins: str = "*"  # Accept as string, parse to list
 
     # AWS
     aws_region: str = "us-east-1"
@@ -32,6 +32,15 @@ class Settings(BaseSettings):
     max_payload_size_kb: int = 256
     default_inbox_limit: int = 50
     max_inbox_limit: int = 100
+
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Parse CORS_ORIGINS string into a list."""
+        if not self.cors_origins or self.cors_origins == "*":
+            return ["*"]
+        # Split by comma and strip whitespace
+        origins = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        return origins if origins else ["*"]
 
     model_config = SettingsConfigDict(
         env_file=".env",
