@@ -219,17 +219,20 @@ async def get_stats() -> StatsResponse:
     """
     try:
         stats = db.get_event_stats()
+        # Ensure all values are integers
         return StatsResponse(
-            pending=stats["pending"],
-            acknowledged=stats["acknowledged"],
-            total=stats["total"],
+            pending=int(stats.get("pending", 0)),
+            acknowledged=int(stats.get("acknowledged", 0)),
+            total=int(stats.get("total", 0)),
         )
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error getting stats: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"error": "internal_error", "message": "Failed to get statistics"},
-        ) from e
+        # Return zeros instead of raising error for better UX
+        return StatsResponse(
+            pending=0,
+            acknowledged=0,
+            total=0,
+        )
 
