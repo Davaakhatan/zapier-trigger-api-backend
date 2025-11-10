@@ -50,3 +50,11 @@ htmlcov/
 # Logs
 *.log
 
+# Lambda deployment artifacts
+*.zip
+lambda-package/
+lambda-with-deps/
+original-package/
+update-package/
+test_extract/
+
