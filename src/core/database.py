@@ -226,27 +226,11 @@ class DynamoDBClient:
         try:
             gsi_name = "status-created_at-index"
             
-            # Get pending count using COUNT query
-            pending_count = 0
-            try:
-                pending_response = self.table.query(
-                    IndexName=gsi_name,
-                    KeyConditionExpression=Key("status").eq("pending"),
-                    Select="COUNT"
-                )
-                pending_count = pending_response.get("Count", 0)
-            except Exception as pending_error:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Error getting pending count: {pending_error}")
-                # Fallback: use get_pending_events to get total
-                try:
-                    _, pending_total = self.get_pending_events(limit=1, offset=0)
-                    pending_count = pending_total
-                except Exception:
-                    pending_count = 0
+            # Get pending count - use the working get_pending_events method
+            # It returns (events, total_count) where total_count is the actual count
+            _, pending_count = self.get_pending_events(limit=1, offset=0)
             
-            # Get acknowledged count - query acknowledged events with COUNT
+            # Get acknowledged count - query acknowledged events
             acknowledged_count = 0
             try:
                 acknowledged_response = self.table.query(
@@ -259,7 +243,16 @@ class DynamoDBClient:
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Error getting acknowledged count: {ack_error}")
-                acknowledged_count = 0
+                # If COUNT query fails, try a regular query to count items
+                try:
+                    acknowledged_items = self.table.query(
+                        IndexName=gsi_name,
+                        KeyConditionExpression=Key("status").eq("acknowledged"),
+                        Limit=1000  # Get up to 1000 to count
+                    )
+                    acknowledged_count = len(acknowledged_items.get("Items", []))
+                except Exception:
+                    acknowledged_count = 0
             
             return {
                 "pending": pending_count,
