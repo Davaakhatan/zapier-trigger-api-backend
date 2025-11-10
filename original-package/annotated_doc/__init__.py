@@ -1,0 +1,7 @@
+try:
+    from importlib.metadata import version
+    __version__ = version("annotated-doc")
+except Exception:
+    __version__ = "0.0.0"
+
+from .main import Doc as Doc
