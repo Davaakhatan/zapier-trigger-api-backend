@@ -117,11 +117,12 @@ class DynamoDBClient:
         try:
             # Query GSI for pending events
             gsi_name = "status-created_at-index"
-            key_condition = Key("status").eq("pending")
+            key_condition = Key("#status").eq("pending")
 
             query_kwargs = {
                 "IndexName": gsi_name,
                 "KeyConditionExpression": key_condition,
+                "ExpressionAttributeNames": {"#status": "status"},
                 "Limit": limit + offset,  # Get more to handle offset
                 "ScanIndexForward": False,  # Most recent first
             }
@@ -235,12 +236,16 @@ class DynamoDBClient:
             gsi_name = "status-created_at-index"
             response = self.table.query(
                 IndexName=gsi_name,
-                KeyConditionExpression=Key("status").eq("acknowledged"),
+                KeyConditionExpression=Key("#status").eq("acknowledged"),
+                ExpressionAttributeNames={"#status": "status"},
                 Limit=limit,
                 ScanIndexForward=False
             )
             return len(response.get("Items", []))
-        except Exception:
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error getting acknowledged count: {e}", exc_info=True)
             return 0
 
     def get_event_stats(self) -> Dict[str, int]:
