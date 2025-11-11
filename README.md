@@ -132,6 +132,18 @@ Acknowledge an event.
 }
 ```
 
+### GET /v1/events/stats
+Get event statistics.
+
+**Response:**
+```json
+{
+  "pending": 42,
+  "acknowledged": 158,
+  "total": 200
+}
+```
+
 ## Development
 
 ### Code Quality
@@ -189,7 +201,53 @@ export DYNAMODB_ENDPOINT_URL=http://localhost:4566
 
 ## AWS Deployment
 
-See `infrastructure/` directory for Terraform/CDK configuration (to be created).
+### Lambda Deployment
+
+The backend is deployed as an AWS Lambda function behind API Gateway.
+
+**Deployment Scripts:**
+- `deploy-lambda.sh` - Deploy Lambda function code
+- `build-layer-docker.sh` - Build Lambda layer with dependencies (Linux-compatible)
+- `rebuild-layer.sh` - Rebuild and update Lambda layer
+
+**Quick Deploy:**
+```bash
+# Deploy Lambda function
+./deploy-lambda.sh
+
+# Rebuild and deploy layer (if dependencies changed)
+./build-layer-docker.sh
+```
+
+**API Endpoint:**
+```
+https://b6su7oge4f.execute-api.us-east-1.amazonaws.com/prod
+```
+
+**Lambda Function:**
+- Function Name: `zapier-triggers-api`
+- Region: `us-east-1`
+- Runtime: Python 3.9
+
+### Environment Variables (Lambda)
+
+Required environment variables in Lambda:
+- `DYNAMODB_TABLE_NAME=zapier-triggers-events`
+- `AWS_REGION=us-east-1`
+- `CORS_ORIGINS=https://main.dib8qm74qn70a.amplifyapp.com` (comma-separated)
+
+### Testing Deployment
+
+```bash
+# Quick test
+./quick-test.sh
+
+# Comprehensive test
+./comprehensive-test.sh
+
+# Load test
+./load-test.sh
+```
 
 ## Environment Variables
 
@@ -199,7 +257,20 @@ See `infrastructure/` directory for Terraform/CDK configuration (to be created).
 | `AWS_REGION` | AWS region | `us-east-1` |
 | `DYNAMODB_TABLE_NAME` | DynamoDB table name | `zapier-triggers-events` |
 | `DYNAMODB_ENDPOINT_URL` | DynamoDB endpoint (for LocalStack) | `None` |
+| `CORS_ORIGINS` | Comma-separated allowed origins | `*` |
 | `API_KEYS` | Comma-separated API keys | `[]` |
 | `RATE_LIMIT_PER_MINUTE` | Rate limit per minute | `100` |
 | `MAX_PAYLOAD_SIZE_KB` | Max payload size in KB | `256` |
+
+## Recent Updates
+
+### Fixed Issues
+- ✅ **Acknowledge Functionality**: Now uses atomic updates with condition expressions to prevent race conditions
+- ✅ **Stats Endpoint**: Fixed DynamoDB reserved keyword handling for status queries
+- ✅ **DynamoDB Queries**: Properly handle reserved keywords using `ExpressionAttributeNames`
+
+### API Improvements
+- ✅ Atomic event acknowledgment (prevents duplicate acknowledgments)
+- ✅ Robust error handling for all endpoints
+- ✅ Proper CORS configuration for frontend integration
 
