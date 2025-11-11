@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 import boto3
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
 
 from src.core.config import settings
@@ -128,17 +128,17 @@ class DynamoDBClient:
 
             # Apply source filter if provided
             if source:
-                query_kwargs["FilterExpression"] = Key("source").eq(source)
+                query_kwargs["FilterExpression"] = Attr("source").eq(source)
 
             # Apply timestamp filter if provided
             if since:
                 since_timestamp = int(since.timestamp())
                 if "FilterExpression" in query_kwargs:
                     query_kwargs["FilterExpression"] = (
-                        query_kwargs["FilterExpression"] & Key("created_at").gte(since_timestamp)
+                        query_kwargs["FilterExpression"] & Attr("created_at").gte(since_timestamp)
                     )
                 else:
-                    query_kwargs["FilterExpression"] = Key("created_at").gte(since_timestamp)
+                    query_kwargs["FilterExpression"] = Attr("created_at").gte(since_timestamp)
 
             response = self.table.query(**query_kwargs)
 
@@ -184,36 +184,41 @@ class DynamoDBClient:
         Raises:
             ValueError: If event not found or already acknowledged
         """
-        # Get current event
-        event = self.get_event(event_id)
-        if not event:
-            raise ValueError(f"Event {event_id} not found")
-
-        if event.get("status") != "pending":
-            raise ValueError(f"Event {event_id} is not pending (status: {event.get('status')})")
-
-        # Update event status
+        # Update event status atomically with condition check
         acknowledged_at = int(datetime.utcnow().timestamp())
         try:
-            self.table.update_item(
+            response = self.table.update_item(
                 Key={"event_id": event_id},
                 UpdateExpression="SET #status = :status, acknowledged_at = :ack_at",
+                ConditionExpression="attribute_exists(event_id) AND #status = :pending_status",
                 ExpressionAttributeNames={"#status": "status"},
                 ExpressionAttributeValues={
                     ":status": "acknowledged",
                     ":ack_at": acknowledged_at,
+                    ":pending_status": "pending",
                 },
                 ReturnValues="ALL_NEW",
             )
 
-            # Get updated event
-            updated_event = self.get_event(event_id)
+            # Return the updated event from the response
+            updated_event = response.get("Attributes", {})
+            if not updated_event:
+                raise ValueError(f"Event {event_id} not found")
+            
             return updated_event
 
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise ValueError(f"Event {event_id} not found (table does not exist)")
+            elif error_code == "ConditionalCheckFailedException":
+                # Event doesn't exist or is not pending
+                # Check if event exists to provide better error message
+                event = self.get_event(event_id)
+                if not event:
+                    raise ValueError(f"Event {event_id} not found")
+                else:
+                    raise ValueError(f"Event {event_id} is not pending (status: {event.get('status')})")
             raise Exception(f"Failed to acknowledge event: {str(e)}") from e
 
     def get_acknowledged_count(self, limit: int = 1000) -> int:
