@@ -47,6 +47,7 @@ class EventItem(BaseModel):
     timestamp: str = Field(..., description="ISO 8601 timestamp")
     payload: Dict[str, Any] = Field(..., description="Event payload")
     source: Optional[str] = Field(None, description="Source identifier")
+    tags: Optional[List[str]] = Field(None, description="Optional list of tags")
     status: str = Field(..., description="Event status")
 
 

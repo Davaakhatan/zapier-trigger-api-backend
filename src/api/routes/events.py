@@ -131,6 +131,7 @@ async def get_inbox(
                 timestamp=event["timestamp"],
                 payload=event["payload"],
                 source=event.get("source"),
+                tags=event.get("tags"),
                 status=event["status"],
             )
             for event in events
@@ -217,11 +218,20 @@ async def get_stats() -> StatsResponse:
 
     Returns counts of pending, acknowledged, and total events.
     """
-    # Get stats from database - use the method we know works
-    stats = db.get_event_stats()
-    return StatsResponse(
-        pending=stats.get("pending", 0),
-        acknowledged=stats.get("acknowledged", 0),
-        total=stats.get("total", 0),
-    )
+    try:
+        # Get stats from database
+        stats = db.get_event_stats()
+        return StatsResponse(
+            pending=stats.get("pending", 0),
+            acknowledged=stats.get("acknowledged", 0),
+            total=stats.get("total", 0),
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error getting stats: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "internal_error", "message": "Failed to get event statistics"},
+        ) from e
 

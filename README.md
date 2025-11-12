@@ -247,7 +247,19 @@ Required environment variables in Lambda:
 
 # Load test
 ./load-test.sh
+
+# Test API documentation examples
+./test-api-examples.sh
 ```
+
+**`test-api-examples.sh`** - Tests all examples from the API documentation:
+- Creates events using the exact examples from the API docs
+- Tests inbox retrieval with filters
+- Tests event acknowledgment
+- Tests statistics endpoint
+- Tests error handling
+- Uses the production API endpoint by default
+- Automatically cleans up test events
 
 ## Environment Variables
 

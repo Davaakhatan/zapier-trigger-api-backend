@@ -11,6 +11,30 @@ from botocore.exceptions import ClientError
 from src.core.config import settings
 
 
+def convert_floats_to_strings(obj: Any) -> Any:
+    """
+    Recursively convert float values to strings for DynamoDB compatibility.
+    
+    DynamoDB requires Decimal types for numbers, but boto3 resource API
+    should handle this. However, to avoid serialization issues, we convert
+    floats to strings which are more reliable for JSON payloads.
+    
+    Args:
+        obj: Object to convert (dict, list, or primitive)
+        
+    Returns:
+        Object with floats converted to strings
+    """
+    if isinstance(obj, float):
+        return str(obj)
+    elif isinstance(obj, dict):
+        return {key: convert_floats_to_strings(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_floats_to_strings(item) for item in obj]
+    else:
+        return obj
+
+
 class DynamoDBClient:
     """DynamoDB client wrapper."""
 
@@ -23,6 +47,8 @@ class DynamoDBClient:
         )
         # Create table reference (table may not exist yet in development)
         self.table = self.dynamodb.Table(settings.dynamodb_table_name)
+        # Use table's meta client for queries with reserved keywords (has same config)
+        self.dynamodb_client = self.table.meta.client
 
     def create_event(
         self,
@@ -47,10 +73,14 @@ class DynamoDBClient:
         timestamp = datetime.utcnow().isoformat() + "Z"
         created_at = int(datetime.utcnow().timestamp())
 
+        # Convert floats to strings in payload and metadata for DynamoDB compatibility
+        processed_payload = convert_floats_to_strings(payload)
+        processed_metadata = convert_floats_to_strings(metadata) if metadata else None
+
         event = {
             "event_id": event_id,
             "timestamp": timestamp,
-            "payload": payload,
+            "payload": processed_payload,
             "status": "pending",
             "created_at": created_at,
         }
@@ -59,8 +89,8 @@ class DynamoDBClient:
             event["source"] = source
         if tags:
             event["tags"] = tags
-        if metadata:
-            event["metadata"] = metadata
+        if processed_metadata:
+            event["metadata"] = processed_metadata
 
         try:
             self.table.put_item(Item=event)
@@ -117,14 +147,17 @@ class DynamoDBClient:
         try:
             # Query GSI for pending events
             gsi_name = "status-created_at-index"
-            key_condition = Key("#status").eq("pending")
+            from boto3.dynamodb.conditions import Attr
 
+            # Use resource API with string-based KeyConditionExpression for reserved keyword
+            # Build query using table.query() with string expression
             query_kwargs = {
                 "IndexName": gsi_name,
-                "KeyConditionExpression": key_condition,
+                "KeyConditionExpression": "#status = :pending_status",
                 "ExpressionAttributeNames": {"#status": "status"},
-                "Limit": limit + offset,  # Get more to handle offset
-                "ScanIndexForward": False,  # Most recent first
+                "ExpressionAttributeValues": {":pending_status": "pending"},
+                "Limit": limit + offset,
+                "ScanIndexForward": False,
             }
 
             # Apply source filter if provided
@@ -142,7 +175,6 @@ class DynamoDBClient:
                     query_kwargs["FilterExpression"] = Attr("created_at").gte(since_timestamp)
 
             response = self.table.query(**query_kwargs)
-
             events = response.get("Items", [])
             total = response.get("Count", 0)
 
@@ -225,7 +257,7 @@ class DynamoDBClient:
     def get_acknowledged_count(self, limit: int = 1000) -> int:
         """
         Get count of acknowledged events.
-        
+
         Args:
             limit: Maximum number to count (default 1000)
             
@@ -233,14 +265,19 @@ class DynamoDBClient:
             Number of acknowledged events
         """
         try:
+            # Use client API directly (same as AWS CLI which works)
             gsi_name = "status-created_at-index"
-            response = self.table.query(
+            client = self.table.meta.client
+            response = client.query(
+                TableName=settings.dynamodb_table_name,
                 IndexName=gsi_name,
-                KeyConditionExpression=Key("#status").eq("acknowledged"),
+                KeyConditionExpression="#status = :ack_status",
                 ExpressionAttributeNames={"#status": "status"},
+                ExpressionAttributeValues={":ack_status": {"S": "acknowledged"}},
                 Limit=limit,
                 ScanIndexForward=False
             )
+            # Convert DynamoDB format to count
             return len(response.get("Items", []))
         except Exception as e:
             import logging
@@ -255,18 +292,35 @@ class DynamoDBClient:
         Returns:
             Dictionary with 'pending', 'acknowledged', and 'total' counts
         """
-        # Get pending count - use get_pending_events which we know works
+        # Get pending count - use get_pending_events
         pending = 0
         try:
-            _, pending = self.get_pending_events(limit=1000, offset=0)
-        except Exception:
+            events, _ = self.get_pending_events(limit=1000, offset=0)
+            pending = len(events)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error getting pending count: {e}", exc_info=True)
             pending = 0
         
-        # Get acknowledged count - use new method
+        # Get acknowledged count - use same pattern as get_pending_events (which works)
         acknowledged = 0
         try:
-            acknowledged = self.get_acknowledged_count(limit=1000)
-        except Exception:
+            gsi_name = "status-created_at-index"
+            query_kwargs = {
+                "IndexName": gsi_name,
+                "KeyConditionExpression": "#status = :ack_status",
+                "ExpressionAttributeNames": {"#status": "status"},
+                "ExpressionAttributeValues": {":ack_status": "acknowledged"},
+                "Limit": 1000,
+                "ScanIndexForward": False,
+            }
+            response = self.table.query(**query_kwargs)
+            acknowledged = len(response.get("Items", []))
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error getting acknowledged count in stats: {e}", exc_info=True)
             acknowledged = 0
         
         return {
